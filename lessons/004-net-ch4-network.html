@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第4章 网络层 · 计算机网络课程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="wrap">
+<p class="meta">计算机网络 · 第 4 章 / 共 6 章 · 预计 90 分钟（本课程最重的一章） · 实践工具：Wireshark + Packet Tracer</p>
+<h1>网络层：让 IP 包横穿整个互联网</h1>
+
+<p>第3章解决了「一跳」的问题：帧能在<b>同一段链路</b>上从一块网卡到另一块网卡。但第3章末尾留了一个大悬念——为什么你 ping 百度时，ARP 问的却是<b>网关</b>？因为帧的传输是「一站一站」的，而你要去的地方隔着几十个路由器。把「一站一站」串成「全程」的，就是网络层。</p>
+
+<div class="tip">网络层的两个核心任务：<b>转发</b>（把分组从路由器的合适端口扔出去——局部动作）和<b>路由</b>（决定整条路径怎么走——全局计算）。互联网给它的服务定位是<b>尽最大努力交付</b>：不保证不丢、不保证按序、不保证时限。听起来很敷衍？这正是设计精髓——把复杂的可靠传输留给端系统（TCP），网络核心只做最快的搬运工，中间节点才能做得又简单又快（这是简答题爱考的设计哲学）。</div>
+
+<h2>一、IPv4 数据报格式：逐字段读一遍</h2>
+<p>还记得第3章抓包里的 ICMP 帧吗？剥掉 14 字节的以太网首部，里面就是 IP 数据报。首部固定 20 字节（可扩展到 60），关键字段：</p>
+<table style="width:100%;border-collapse:collapse">
+<tr><th style="text-align:left;border-bottom:1px solid #ccc">字段</th><th style="text-align:left;border-bottom:1px solid #ccc">意义</th><th style="text-align:left;border-bottom:1px solid #ccc">考点</th></tr>
+<tr><td>版本</td><td>4 = IPv4，6 = IPv6</td><td>—</td></tr>
+<tr><td>首部长度</td><td>单位是 <b>4 字节</b></td><td>最小 5（20B）最大 15（60B），考换算</td></tr>
+<tr><td>总长度</td><td>首部+数据，单位<b>字节</b></td><td>与首部长度单位不同，经典陷阱</td></tr>
+<tr><td>TTL</td><td>每过一个路由器减 1，减到 0 丢弃并回送 ICMP 差错</td><td>防兜圈；<b>tracert 的原理</b></td></tr>
+<tr><td>协议</td><td>数据部分是哪个上层协议：<b>1=ICMP，6=TCP，17=UDP</b></td><td>背下来，Wireshark 会用到</td></tr>
+<tr><td>首部校验和</td><td>只校验首部</td><td>因为 TTL 每跳都变，整包校验无意义</td></tr>
+</table>
+<p>对照真实抓包：你的电脑发 ping 包时 TTL=128（Windows 默认），百度回包 TTL=46——说明百度到你的服务器之间大约走了 128−46=82−（初始 64−46=18，Linux 初始 TTL 通常 64）跳。一个字段就能「遥测」全网拓扑，这就是 tracert 的种子。</p>
+
+<h2>二、IP 地址与子网划分（本章第一大考点）</h2>
+
+<h3>从分类编址到 CIDR：为什么必须进化</h3>
+<p>最早的方案是<b>分类编址</b>：A 类 /8（16M 台主机）、B 类 /16（65534 台）、C 类 /24（254 台）。问题立刻显现：一个单位有 300 台主机，C 类不够、B 类浪费 65000 个地址——「两刀之间没有中间档」。于是子网划分出现（借用主机位当子网位），最终进化为<b>CIDR（无分类编址）</b>：彻底抛弃 A/B/C 概念，用「IP + 前缀长度」表示任意长度的网络，如 <code>192.168.1.0/26</code>。</p>
+
+<h3>CIDR 计算三板斧（所有考题都是这三步）</h3>
+<pre><code>例题：主机 IP = 192.168.10.70，掩码 /26，求网络地址、广播地址、可用主机数
+
+① 写出掩码：/26 = 前 26 位是 1 = 255.255.255.192
+   （第三个八位组以后的 192 = 11000000，即最后 6 位是主机位）
+② 网络地址 = IP 与掩码按位与：
+   70 = 01000110，与 11000000 → 01000000 = 64
+   → 网络地址 192.168.10.64/26
+③ 广播地址 = 主机位全 1：64+63 = 127 → 192.168.10.127
+   可用主机数 = 2^6 − 2 = 62（去掉网络地址和广播地址）
+   可用范围 192.168.10.65 ~ 192.168.10.126，本机 70 正在其中 ✓
+
+判断「两台主机是否同网段」：分别算网络地址，相等则同段、直连可通；
+不等则必须经过路由器——第3章实验里跨 VLAN 不通就是这个原因。</code></pre>
+
+<div class="exam">路由器转发用<b>最长前缀匹配</b>：目的 IP 同时命中多个表项时，选前缀最长（最具体）的那条。例：表中有 192.168.0.0/16 和 192.168.10.0/24 两条，目的 192.168.10.5 走 /24 那条。选择题常考「为什么」——前缀越长网络越小，路径越精确。</div>
+
+<h2>三、ARP：解开第3章的悬念</h2>
+<p>ARP（地址解析协议）回答一个问题：<b>同一网段内，已知 IP，如何找到对应的 MAC？</b>（IP 地址好记好编址，但帧最终要靠 MAC 交付——两个地址体系缺一不可，这个「为什么需要两个地址」是高频简答。）</p>
+<p>流程对照真实抓包（第3章实验文件里就有）：</p>
+<pre><code>① 请求（广播）：Who has 10.134.46.253? Tell 10.134.46.202
+   以太网目的 MAC = ff:ff:ff:ff:ff:ff —— 全网段都收到
+   目标 MAC 字段 = 00:00:00:00:00:00 —— 占位，等着被填
+② 应答（单播）：10.134.46.253 is at 74:08:aa:99:5c:16
+   只有 IP 匹配的主机回应，且直接单播回询问者
+③ 双方互相把对方 (IP, MAC) 写入 ARP 高速缓存（cmd: arp -a 可查）</code></pre>
+<p><b>现在揭晓悬念</b>：ping 百度（跨网段）时，为什么 ARP 问的是网关？因为「下一跳」才是帧的真正交付对象。主机查自己的<b>路由表</b>：目的 39.156.70.239 不在我的网段 → 交给默认网关 → 于是 ARP 请求「网关的 IP」得到「网关的 MAC」，帧的目的 MAC 填网关，<b>但 IP 目的地址仍然写百度</b>。这就是「IP 负责端到端、MAC 负责每一段」的铁证——每过一个路由器，帧的源/目的 MAC 都换一对，IP 首部的源/目的地址全程不变（NAT 除外）。</p>
+
+<h2>四、ICMP 与两个经典工具</h2>
+<p>ICMP 依附于 IP（协议号 1），分两类：<b>ICMP 询问</b>（Echo 请求 8 / 应答 0，即 ping）和 <b>ICMP 差错报告</b>（终点不可达 3、超时 11、改变路由 5 等，差错报告不发送 ICMP 差错报文的四种特殊情况：对 ICMP 差错报文本身、对第一个分片之后的所有分片、对具有组播地址的数据报、对特殊地址如 127.0.0.1——简答题）。</p>
+<pre><code>ping 原理  ：发 Echo 请求，收 Echo 应答，测 RTT 与可达性
+tracert 原理：依次发送 TTL=1,2,3… 的分组
+   TTL=1  → 第 1 个路由器减到 0 → 回 ICMP 超时（暴露第 1 跳）
+   TTL=2  → 第 2 个路由器回超时（暴露第 2 跳）……
+   TTL 足够到达终点 → 终点回 ICMP Echo 应答（区别于超时！）
+   所以 tracert 输出里最后一跳是「应答」而不是「超时」</code></pre>
+<div class="exam">Windows 的 tracert 用 ICMP，Cisco 路由器的 traceroute 默认用 UDP 高端口—— Packet Tracer 实验里能亲眼看到这个差别。</div>
+
+<h2>五、路由协议鸟瞰（区分三个层次即可）</h2>
+<table style="width:100%;border-collapse:collapse">
+<tr><th style="text-align:left;border-bottom:1px solid #ccc">协议</th><th style="text-align:left;border-bottom:1px solid #ccc">算法</th><th style="text-align:left;border-bottom:1px solid #ccc">度量</th><th style="text-align:left;border-bottom:1px solid #ccc">范围</th><th style="text-align:left;border-bottom:1px solid #ccc">要点</th></tr>
+<tr><td>RIP</td><td>距离向量</td><td>跳数（≤15）</td><td>AS 内部</td><td>坏消息传得慢（慢收敛）；周期性广播整表</td></tr>
+<tr><td>OSPF</td><td>链路状态</td><td>代价（带宽）</td><td>AS 内部</td><td>洪泛链路状态通告，全区域拓扑图一致后各算最短路（Dijkstra）</td></tr>
+<tr><td>BGP</td><td>路径向量</td><td>策略优先</td><td>AS 之间</td><td>域间路由只求「可达 + 合政策」，不求最优</td></tr>
+</table>
+<p>记忆钥匙：RIP 传「我的整张表」（邻居家的事听邻居说），OSPF 传「我到邻居的链路状态」（大家一起画地图），BGP 只关心「经过哪些国家」（AS 路径）。</p>
+
+<h2>六、🧪 动手实践（本章 3 个实验）</h2>
+
+<h3>实验 1：Wireshark 验证 tracert 原理（亲手抓 ICMP）</h3>
+<pre><code>1. Wireshark 抓包开始，过滤器输入：icmp
+2. cmd 执行：tracert www.baidu.com
+3. 观察任务：
+   a. 找 TTL=1 的请求包 → 应答是 type 11（Time-to-live exceeded，超时）
+   b. 最后一跳 → 应答是 type 0（Echo reply，应答）——验证上面讲的原理
+   c. 任选一个 Echo 请求，展开 IPv4 首部，核对：协议=1(ICMP)、
+      TTL 从 1 逐个增大、Total Length 与 Header Length 的单位差异
+4. 高级验证：tracert -d www.baidu.com（不解析域名，包更干净）</code></pre>
+
+<h3>实验 2：Wireshark 观察「跨网段 ARP 问网关」</h3>
+<pre><code>1. cmd 执行：arp -d      （清空 ARP 缓存，需要管理员权限；
+                            若失败可跳过——缓存 2 分钟后自动老化）
+2. Wireshark 过滤器：arp
+3. cmd 执行：ping 223.5.5.5     （阿里 DNS，肯定跨网段）
+4. 观察：抓到的 ARP 请求问的是「Who has 你的网关IP?」
+   ——而不是问 223.5.5.5！这就是「下一跳交付」的直接证据
+5. 对照第3章的抓包文件里「问本网段 IP」的场景，
+   一句话总结：ARP 问谁，取决于目的 IP 在不在本网段</code></pre>
+
+<h3>实验 3：Packet Tracer —— 三路由器静态路由组网</h3>
+<pre><code>拓扑：  PC0 --- [R1] --- [R2] --- [R3] --- PC1
+        网段A          网段B           网段C
+        192.168.1.0/24  10.0.0.0/30     192.168.2.0/24
+        （R1-R2 之间     （R2-R3 之间）
+         用 10.0.0.0/30）
+
+1. 用 2911 路由器×3，串口或交叉线连接，PC 用直连线
+2. 给各接口配 IP（R2 的 g0/0 = 10.0.0.1，g0/1 = 10.0.0.5 …）
+3. 给 PC0 配 192.168.1.10/24 网关 192.168.1.1
+   给 PC1 配 192.168.2.10/24 网关 192.168.2.1
+4. 此刻 PC0 ping PC1 —— 不通！路由器只认识直连网段
+5. 在 R1 上补静态路由（告诉 R1：去 192.168.2.0/24 走 10.0.0.2）：
+   enable
+   configure terminal
+   ip route 192.168.2.0 255.255.255.0 10.0.0.2
+   在 R3 上补回程路由：
+   ip route 192.168.1.0 255.255.255.0 10.0.0.6
+   （R2 是中间人，两个方向都补）
+6. PC0 ping PC1 —— 通！show ip route 观察每台路由器
+   C = 直连，S = 静态
+7. 思考：如果只配去程不配回程，ping 会怎样？
+   （单通——请求能到，应答回不来，数据通信永远需要双向路由）</code></pre>
+
+<h2>七、自测</h2>
+<div class="quiz" data-quiz='[{"q":"主机 IP 为 172.16.9.77/20，其所在网络的可用主机数是？","opts":["4094","4096","1022","254"],"a":0,"exp":"/20 → 主机位 12 位，2^12−2 = 4094。减 2 是去掉网络地址和广播地址，这是最容易丢的分。"},{"q":"路由器收到目的 IP 同时匹配 192.168.0.0/16 和 192.168.10.0/24 两条路由，转发按？","opts":["先配置的","前缀最长的 192.168.10.0/24","度量值最小的","随意"],"a":1,"exp":"最长前缀匹配：前缀越长网络越具体，路径越精确，永远优先。"},{"q":"主机 ping 同网段另一台主机时发出的第一个包是？","opts":["ICMP Echo 请求","ARP 请求","DHCP Discover","TCP SYN"],"a":1,"exp":"帧要靠 MAC 交付，先 ARP 拿到对方 MAC 才能封装 ICMP 帧。若目的跨网段，则 ARP 问的是网关。"},{"q":"tracert 最后一跳收到的 ICMP 报文类型是？","opts":["超时 (type 11)","终点不可达 (type 3)","Echo 应答 (type 0)","改变路由 (type 5)"],"a":2,"exp":"TTL 足够时分组真正到达终点，终点回送 Echo 应答；中间路由器回的是超时。这正是 tracert 能判断「到达」的机制。"},{"q":"RIP 与 OSPF 的本质区别是？","opts":["RIP 用于 IPv4，OSPF 用于 IPv6","RIP 是距离向量（传整表），OSPF 是链路状态（传链路状态）","RIP 更安全","OSPF 不能用于大型网络"],"a":1,"exp":"算法范式不同：RIP 周期广播整张路由表、以跳数为度量且上限 15；OSPF 洪泛链路状态、全网拓扑一致后用 Dijkstra 算最短路。"}]'></div>
+
+<p>📖 新术语见 <a href="../reference/glossary.html">术语表</a>。实验 3 的组网过程值得截几张图（Simulation 模式看包怎么走最震撼）。下一章：<b>第5章 运输层</b>——TCP 三次握手第一次用 Wireshark 亲眼见证。</p>
+
+<div class="lesson-nav">
+<a href="../index.html">🏠 课程首页</a>
+<a href="003-net-ch3-datalink.html">← 第3章 数据链路层</a>
+<a href="005-net-ch5-transport.html">第5章 运输层 →</a>
+</div>
+</div>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

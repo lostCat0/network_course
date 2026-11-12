@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>计算机网络课程 · 章节导航</title>
+<link rel="stylesheet" href="assets/course.css">
+<style>
+  .hero { padding: 48px 0 8px; }
+  .hero h1 { border: none; margin-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin: 2em 0; }
+  .card {
+    display: block; background: #fff; border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px; text-decoration: none; color: var(--ink);
+    transition: all .15s;
+  }
+  .card:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(15,107,92,.12); transform: translateY(-2px); }
+  .card .num { font-family: "JetBrains Mono", Consolas, monospace; color: var(--accent); font-weight: 700; }
+  .card h3 { margin: 4px 0 8px; font-size: 1.05rem; }
+  .card p { margin: 0; font-size: .88rem; color: var(--ink-soft); line-height: 1.6; }
+  .card.extra { background: var(--accent-soft); border-color: transparent; }
+  .badge { display: inline-block; font-size: .75rem; background: var(--accent-soft); color: var(--accent);
+    border-radius: 999px; padding: 2px 10px; margin-left: 8px; font-family: "PingFang SC","Microsoft YaHei",sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hero">
+  <p class="meta">理论场景化讲解 × 命令行实验 × 浏览器交互组件 · 以谢希仁《计算机网络》章节体系为主线</p>
+  <h1>计算机网络课程 🌐</h1>
+  <p>沿袭「在实践中学习」模式：每个概念由具体场景引出，理论讲透，
+  实践环节包含 <b>Windows 命令行实验</b>（ping / tracert / ipconfig）、
+  <b>Wireshark 4.6.9 真实抓包分析</b>（含课程专属抓包文件）与
+  <b>Cisco Packet Tracer 9.0.1 仿真组网</b>（碰撞域、静态路由、VLAN、迷你互联网），
+  每章配交互自测。</p>
+</div>
+
+<div class="grid">
+  <a class="card" href="lessons/001-net-ch1-overview.html">
+    <span class="num">第 1 章</span><span class="badge">60 分钟 · 含实验</span>
+    <h3>概述</h3>
+    <p>互联网组成、三种交换方式与时延计算、性能指标（ping/tracert 实验）、分层模型与协议三要素</p>
+  </a>
+  <a class="card" href="lessons/002-net-ch2-physical.html">
+    <span class="num">第 2 章</span><span class="badge">60 分钟 · 含交互组件</span>
+    <h3>物理层</h3>
+    <p>码元与信号、奈氏准则与香农公式（计算器实验）、编码波形绘制器、传输媒体、信道复用</p>
+  </a>
+  <a class="card" href="lessons/003-net-ch3-datalink.html">
+    <span class="num">第 3 章</span><span class="badge">75 分钟 · Wireshark + Packet Tracer</span>
+    <h3>数据链路层</h3>
+    <p>封装成帧、透明传输、CRC 例题、PPP、CSMA/CD 与争用期、以太网帧与 MAC（真实抓包讲解）、交换机自学习、VLAN（组网实验）</p>
+  </a>
+  <a class="card" href="lessons/004-net-ch4-network.html">
+    <span class="num">第 4 章</span><span class="badge">90 分钟 · Wireshark + Packet Tracer</span>
+    <h3>网络层</h3>
+    <p>IPv4 首部、CIDR 计算三板斧、ARP（真实抓包揭晓跨网段问网关之谜）、ICMP 与 tracert 原理、RIP/OSPF/BGP、三路由器静态路由实验</p>
+  </a>
+  <a class="card" href="lessons/005-net-ch5-transport.html">
+    <span class="num">第 5 章</span><span class="badge">90 分钟 · Wireshark 抓握手</span>
+    <h3>运输层</h3>
+    <p>端口与套接字、UDP vs TCP、三次握手与四次挥手（含 2020 新考法）、滑动窗口与 SACK、流量控制 vs 拥塞控制（cwnd 例题）、Packet Tracer 仿真看握手</p>
+  </a>
+  <a class="card" href="lessons/006-net-ch6-application.html">
+    <span class="num">第 6 章</span><span class="badge">收官 · 综合组网实验</span>
+    <h3>应用层</h3>
+    <p>DNS 递归/迭代、HTTP 特点与连接方式、DHCP 四步曲、FTP/邮件协议、P2P；Packet Tracer 自建 DNS+Web+DHCP 迷你互联网；六层知识地图收官复习</p>
+  </a>
+  <a class="card extra" href="reference/glossary.html">
+    <span class="num">附录</span>
+    <h3>📖 计算机网络术语表</h3>
+    <p>全部 6 章术语持续扩充，复习时当清单逐项自测</p>
+  </a>
+</div>
+
+</div>
+</body>
+</html>

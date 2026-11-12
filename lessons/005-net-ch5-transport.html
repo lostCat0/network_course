@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第5章 运输层 · 计算机网络课程</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="wrap">
+<p class="meta">计算机网络 · 第 5 章 / 共 6 章 · 预计 90 分钟 · 实践工具：Wireshark 抓 TCP 握手 + Packet Tracer 仿真模式</p>
+<h1>运输层：从「送到主机」到「交给程序」</h1>
+
+<p>网络层已经能把 IP 数据报送到全世界任何一台主机了。但请想一个新问题：你电脑上同时开着浏览器、微信、音乐播放器，百度回来的包凭什么交给浏览器而不是微信？IP 地址只精确到<b>主机</b>，还差最后一公里——<b>进程</b>。</p>
+
+<div class="tip">运输层的使命：<b>为主机间的进程通信提供逻辑信道</b>。两个协议代表两种截然不同的服务哲学——UDP 是「平信」：不连接、不保证、不重传，但快且轻；TCP 是「挂号回执专递」：先握手建立连接、逐字节确认、丢了重传，慢一点但可靠。学完本章你要能回答：什么场景选 UDP（直播、DNS、游戏），什么场景必须 TCP（网页、文件传输、支付）。</div>
+
+<h2>一、端口与套接字：进程的「门牌号」</h2>
+<p><b>端口号</b> 16 位（0~65535），标识主机内的通信端点。分类：</p>
+<ul>
+<li><b>熟知端口 0~1023</b>：HTTP 80、HTTPS 443、DNS 53、FTP 21、SSH 22、SMTP 25——服务器服务的固定门牌。</li>
+<li><b>登记端口 1024~49151</b>：给没有熟知端口的应用登记使用。</li>
+<li><b>短暂端口 49152~65535</b>：客户端临时取用，用完归还。看第3章真实抓包：你的浏览器连 443 端口时，本地用的 60844、53761 就是短暂端口。</li>
+</ul>
+<p><b>套接字（Socket）= (IP 地址 : 端口号)</b>。TCP 连接由<b>一对套接字</b>唯一标识——所以一台服务器 443 端口能同时维持成千上万条连接，靠的是对方 IP:端口不同来区分。这是简答常考点。</p>
+
+<h2>二、UDP：把「简洁」做到极致</h2>
+<p>UDP 首部仅 <b>8 字节</b>：源端口 2B + 目的端口 2B + 长度 2B + 校验和 2B。特点四连（简答背诵）：</p>
+<ul>
+<li><b>无连接</b>：发送前不握手，拿起来就发；</li>
+<li><b>尽最大努力交付</b>：不保证可靠，不确认不重传；</li>
+<li><b>面向报文</b>：应用交来多长就发多长，不合并不拆分（一次交一份）；</li>
+<li><b>没有拥塞控制</b>：网络拥堵也不减速——这正是实时音视频（宁丢帧不等待）和 DNS 偏爱它的原因。</li>
+</ul>
+<p>校验和可选（全 0 表示不校验），伪首部只参与计算不传输——细节知道即可。</p>
+
+<h2>三、TCP：可靠传输的全部秘密</h2>
+
+<h3>3.1 面向字节流</h3>
+<p>TCP 把应用交来的数据视为<b>无边界的字节流</b>，切分成大小合适的<b>报文段（segment）</b>发送。「面向字节流」的后果：接收方 TCP 交给应用的数据可能和发送方写入的「一次一块」完全不同——分块是 TCP 自己决定的。这也是「粘包」问题的根源（应用层要自己定边界），深入理解这点是面试高频。</p>
+
+<h3>3.2 首部关键字段</h3>
+<p>固定首部 20 字节。必考字段：<b>序号 seq</b>（本报文段数据第一个字节的编号）、<b>确认号 ack</b>（期望收到的下一个字节序号 = 已正确收到的最后字节 +1，含义是「累积确认：这之前的都收到了」）、<b>窗口</b>（接收方剩余缓存，用于流量控制）。6 个控制位里记四个：<b>SYN</b>（建连）、<b>FIN</b>（释放）、<b>ACK</b>（确认号有效）、<b>RST</b>（复位，异常终止）。</p>
+
+<h3>3.3 三次握手（先看真实抓包再记图）</h3>
+<p>在我为你抓的样本流量里就有大量 TCP 连接（443 端口的 HTTPS）。握手三步，A=客户端 B=服务器：</p>
+<pre><code>① A → B : SYN=1, seq=x            （A：我想建立连接）
+② B → A : SYN=1, ACK=1, seq=y, ack=x+1   （B：同意，同时我也开一条）
+③ A → B : ACK=1, seq=x+1, ack=y+1 （A：收到，双方各自完成）</code></pre>
+<p><b>为什么恰好三次，不是两次？</b>关键在第二次报文的双重身份（SYN+ACK 合并）。若只有两次：A 发 SYN，B 回 ACK，连接就算建立了——但这个 SYN 若是网络中<b>滞留的失效请求</b>（A 早已放弃），B 单方面建立连接、傻等数据，资源白白占用（半连接漏洞）。第三次握手让 A 有机会「确认双方都确认过了」，失效请求自然作废。<b>为什么不是四次？</b>因为 B 的 SYN 和 ACK 合并成一报发送，没有必要拆开（这是 2020 年后的新考法，注意）。</p>
+
+<h3>3.4 四次挥手与 TIME_WAIT</h3>
+<pre><code>① A → B : FIN=1, seq=u     （A：我发完了）
+② B → A : ACK=1, ack=u+1   （B：知道了——但我可能还有话说）
+   （此时连接处于半关闭：A→B 方向关闭，B 仍可发数据）
+③ B → A : FIN=1, seq=w     （B：我也发完了）
+④ A → B : ACK=1, ack=w+1   （A：收到，再见）
+A 在收到第④步确认前要等待 2MSL 才真正关闭</code></pre>
+<p>两个经典问答：①<b>为什么挥手要四次而握手三次？</b>因为 TCP 全双工，两个方向独立关闭；B 收到 FIN 时可能还有数据没发完，ACK 和 FIN 不能合并（握手时 SYN+ACK 能合并）。②<b>为什么 A 要等 2MSL（最长报文段寿命的 2 倍）？</b>保证最后一个 ACK 能重传一次（若 B 没收到会重发 FIN），且让本连接中所有旧报文在网络中消亡，避免污染下一个相同端口的连接。</p>
+
+<h3>3.5 可靠传输：滑动窗口一以贯之</h3>
+<p>从简单到精巧的演进链（理解这个链路比背名词重要）：</p>
+<ul>
+<li><b>停止等待</b>：发一包等一确认——太慢，信道利用率低；</li>
+<li><b>连续 ARQ + 滑动窗口</b>：一口气发窗口内所有字节，收到确认窗口向前滑——效率高；</li>
+<li><b>超时重传</b>：计时器到点未确认就重传。超时时间 RTO 依据 <b>加权平均往返时间 RTTs</b> 动态调整（RTTs = (1−α)×旧RTTs + α×新样本，α 常取 1/8——计算题会考）；</li>
+<li><b>累积确认的漏洞 → SACK</b>：只确认连续部分，中间丢的段要等超时。看第3章真实抓包第 3 帧的标志：<code>SLE=1 SRE=2</code>——这就是 SACK（选择确认）在真实网络里的样子，告诉对方「1~2 号块我也收到了」。</li>
+</ul>
+
+<h3>3.6 流量控制 vs 拥塞控制（易混，务必分清）</h3>
+<table style="width:100%;border-collapse:collapse">
+<tr><th style="text-align:left;border-bottom:1px solid #ccc"></th><th style="text-align:left;border-bottom:1px solid #ccc">流量控制</th><th style="text-align:left;border-bottom:1px solid #ccc">拥塞控制</th></tr>
+<tr><td>怕什么</td><td><b>接收方</b>缓存装不下</td><td><b>网络</b>（路由器）撑爆</td></tr>
+<tr><td>谁控制</td><td>点对点（收方用窗口字段钳制发方）</td><td>全局性（发方自己探测网络）</td></tr>
+<tr><td>机制</td><td>滑动窗口（rwnd）</td><td>慢开始、拥塞避免、快重传、快恢复（cwnd）</td></tr>
+<tr><td>实际发送窗口</td><td colspan="2" style="text-align:left">min(接收窗口 rwnd, 拥塞窗口 cwnd) —— 两个都要听</td></tr>
+</table>
+<p>拥塞控制四算法必须会画 <b>cwnd 演变图</b>（经典考题）：慢开始阶段每 RTT 翻倍（1→2→4→8），达到<b>慢开始门限 ssthresh</b> 后转拥塞避免线性 +1（8→9→10…）；一旦<b>超时</b>，ssthresh = 当前 cwnd/2，cwnd 重置 1 重新慢开始；若收到 <b>3 个重复 ACK</b> 则触发快重传（立即重发丢失段）+ 快恢复（ssthresh=cwnd/2，cwnd=ssthresh 直接进入拥塞避免，不回到 1）。</p>
+<pre><code>例题：ssthresh=8, cwnd 从 1 开始慢开始。写出 cwnd 变化：
+1 → 2 → 4 → 8（到达门限）→ 9 → 10 → 11 …（拥塞避免，每 RTT +1）
+若 cwnd=10 时超时：ssthresh = 5, cwnd = 1，重新慢开始：
+1 → 2 → 4 → 5（到达新门限）→ 6 → 7 …</code></pre>
+
+<h2>四、🧪 动手实践（本章 2 个实验）</h2>
+
+<h3>实验 1：Wireshark 亲手抓三次握手 + 挥手</h3>
+<pre><code>1. Wireshark 开始抓包，过滤器：tcp.flags.syn==1 || tcp.flags.fin==1
+   （只看建连和挥手瞬间）
+2. 浏览器新标签页打开一个网站（如 http://example.com 用 http 抓得到明文握手）
+3. 找一对 SYN / SYN,ACK / ACK——三次握手三行，右键 Follow → TCP Stream
+   观察任务：
+   a. 相对序号（Wireshark 显示 Relative seq）：SYN 的 seq=0，
+      服务器回的 ack=1 —— 验证 ack = 对方 seq+1
+   b. SYN 和 FIN 都占 1 个序号但都不携带数据（教科书原话在抓包里的样子）
+   c. 挥手侧：FIN 四步走，观察两方向的 seq 是否独立推进
+4. 高级：过滤器 tcp.analysis.retransmission
+   ——看有没有真实网络的重传报文（你 RTT 波动大时几乎必然出现）</code></pre>
+
+<h3>实验 2：Packet Tracer 仿真模式看 TCP 全程</h3>
+<pre><code>1. 拓扑：PC0 连 Server0（Server 的 HTTP 服务默认开启）
+2. PC 配 IP 与网关，先在 PC 的浏览器里访问一次服务器 IP 确认能通
+3. 切到 Simulation 模式，Edit Filters 只勾选 TCP
+4. PC0 浏览器再访问服务器，点 Play 一帧一帧看：
+   SYN → SYN,ACK → ACK → HTTP GET → HTTP 响应 → FIN/ACK 四步
+5. 点击任意报文可看 OSI Model 分层视图——
+   对照第3/4章学过的以太网帧、IP 首部在这里一层层套着
+6. 思考题：把 Server 的 HTTP 服务关掉再访问，抓到的应答是什么？
+   （RST——连接被拒绝，RST 控制位的真实用途）</code></pre>
+
+<h2>五、自测</h2>
+<div class="quiz" data-quiz='[{"q":"TCP 连接由什么唯一标识？","opts":["服务器 IP + 端口","客户端 IP + 端口","双方套接字对 (源IP:源端口, 目的IP:目的端口)","源 MAC 和目的 MAC"],"a":2,"exp":"一对套接字唯一确定一条 TCP 连接，所以服务器同一个 443 端口能同时维持大量连接。"},{"q":"三次握手中第二次报文的双重身份是？","opts":["SYN + ACK","ACK + FIN","SYN + RST","PSH + ACK"],"a":0,"exp":"服务器把同意建连的 SYN 和确认请求的 ACK 合并在同一报文发送，这也是握手只需三次而非四次的原因。"},{"q":"TCP 挥手后主动方要等 2MSL，原因不包括？","opts":["保证最后一个 ACK 若丢失可重传","让本连接的旧报文在网络中消亡","等待对方重发 FIN","防止旧连接报文干扰新连接"],"a":2,"exp":"等待 2MSL 是为了保证 ACK 丢失后能响应重传的 FIN（被动方会重发），并让旧报文自然消亡；「等对方重发 FIN」不是目的而是应对手段。"},{"q":"慢开始门限 ssthresh=8，cwnd 从 1 开始，拥塞避免阶段的 cwnd 增长规律是？","opts":["每 RTT 翻倍","每 RTT 加 1","每收到一个 ACK 加 1","每 RTT 减半"],"a":1,"exp":"慢开始阶段每 RTT 翻倍（指数增长），达到 ssthresh 后转为拥塞避免，每 RTT 线性 +1。"},{"q":"若 cwnd=10 时发生超时，新的 ssthresh 和 cwnd 分别是？","opts":["ssthresh=10, cwnd=1","ssthresh=5, cwnd=1","ssthresh=5, cwnd=5","ssthresh=10, cwnd=10"],"a":1,"exp":"超时：ssthresh = 当前 cwnd 的一半 = 5，cwnd 重置为 1 重新慢开始（快恢复则是直接 cwnd=ssthresh 进入拥塞避免，不回 1——注意区分触发条件）。"}]'></div>
+
+<p>📖 新术语见 <a href="../reference/glossary.html">术语表</a>。下一章是收官之章：<b>第6章 应用层</b>——DNS、HTTP、DHCP 一起登场，最后用 Packet Tracer 搭一个完整的小型网站基础设施。</p>
+
+<div class="lesson-nav">
+<a href="../index.html">🏠 课程首页</a>
+<a href="004-net-ch4-network.html">← 第4章 网络层</a>
+<a href="006-net-ch6-application.html">第6章 应用层 →</a>
+</div>
+</div>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
